@@ -247,7 +247,7 @@ func NewCollector(config Config) (*Collector, error) {
 
 // Traffic Accident Collection
 func (c *Collector) fetchAccidents(ctx context.Context) (*AccidentAPIResponse, error) {
-	url := fmt.Sprintf("%s?key=%s&type=json&numOfRows=1000&pageNo=1&sortType=desc&pagingYn=Y",
+	url := fmt.Sprintf("%s?key=%s&type=json&numOfRows=10&pageNo=1&sortType=desc&pagingYn=Y",
 		c.config.AccidentAPIURL, c.config.APIKey)
 
 	log.Printf("[Accident] Fetching from: %s", url)
