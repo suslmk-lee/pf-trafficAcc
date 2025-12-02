@@ -572,13 +572,10 @@ func (c *Collector) saveRoadStatusToCache(ctx context.Context, statusList []Road
 	loc, _ := time.LoadLocation("Asia/Seoul")
 	saved := 0
 
-	for _, status := range statusList {
-		collectedAt, err := time.ParseInLocation("20060102 1504", status.StdDate+" "+status.StdHour, loc)
-		if err != nil {
-			log.Printf("[RoadStatus] Failed to parse time: %v", err)
-			continue
-		}
+	// Use current time as collected_at for all records in this batch
+	collectedAt := time.Now().In(loc)
 
+	for _, status := range statusList {
 		// Handle empty values
 		trafficAmount := status.TrafficAmount
 		if trafficAmount == "" {
