@@ -29,18 +29,38 @@
 
 ### 캐시 테이블 생성
 
+**Linux/Mac:**
 ```bash
 cd ../db
 mysql -h 103.218.158.244 -P 30306 -u trafficuser -ptrafficpass --skip-ssl trafficdb < add-cache-tables.sql
+```
+
+**Windows (PowerShell):**
+```powershell
+cd ..\db
+Get-Content add-cache-tables.sql | mysql -h 103.218.158.244 -P 30306 -u trafficuser -ptrafficpass --skip-ssl trafficdb
 ```
 
 ### 실행 방법
 
 #### 방법 1: 스크립트 사용 (권장)
 
+**Linux/Mac:**
 ```bash
 cd openapi-collector
 ./run-local.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+cd openapi-collector
+.\run-local.ps1
+```
+
+**Windows (명령 프롬프트):**
+```cmd
+cd openapi-collector
+run-local.bat
 ```
 
 #### 방법 2: 환경 변수 파일 사용
