@@ -412,31 +412,36 @@ func (s *Server) getRoadStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	// Get the most recent data, aggregating by conzone (average values for multiple VDS in same section)
-	// Exclude invalid data (speed < 0 or grade = 0)
+	// Get the most recent data per route, aggregating by conzone
+	// Shows latest available data for each route (no time limit)
+	// This ensures all routes are displayed even if external API has gaps
 	query := `
+		WITH LatestByRoute AS (
+			SELECT route_no, MAX(collected_at) as max_collected
+			FROM road_traffic_status
+			GROUP BY route_no
+		)
 		SELECT
-			route_no,
-			route_name,
-			conzone_id,
-			conzone_name,
-			MIN(vds_id) as vds_id,
-			updown_type_code,
-			ROUND(AVG(CASE WHEN traffic_amount >= 0 THEN traffic_amount END)) as traffic_amount,
-			ROUND(AVG(CASE WHEN speed >= 0 THEN speed END)) as speed,
-			ROUND(AVG(CASE WHEN share_ratio >= 0 THEN share_ratio END)) as share_ratio,
-			ROUND(AVG(CASE WHEN time_avg >= 0 THEN time_avg END)) as time_avg,
-			MAX(grade) as grade,
-			MAX(collected_at) as collected_at
-		FROM road_traffic_status
-		WHERE collected_at = (SELECT MAX(collected_at) FROM road_traffic_status)
-			AND speed >= 0
-			AND grade > 0
-		GROUP BY route_no, route_name, conzone_id, conzone_name, updown_type_code
-		ORDER BY route_no, conzone_id`
+			r.route_no,
+			r.route_name,
+			r.conzone_id,
+			r.conzone_name,
+			MIN(r.vds_id) as vds_id,
+			r.updown_type_code,
+			ROUND(AVG(CASE WHEN r.traffic_amount >= 0 THEN r.traffic_amount END)) as traffic_amount,
+			ROUND(AVG(CASE WHEN r.speed >= 0 THEN r.speed END)) as speed,
+			ROUND(AVG(CASE WHEN r.share_ratio >= 0 THEN r.share_ratio END)) as share_ratio,
+			ROUND(AVG(CASE WHEN r.time_avg >= 0 THEN r.time_avg END)) as time_avg,
+			MAX(r.grade) as grade,
+			MAX(r.collected_at) as collected_at
+		FROM road_traffic_status r
+		INNER JOIN LatestByRoute l ON r.route_no = l.route_no AND r.collected_at = l.max_collected
+		WHERE r.speed >= 0 AND r.grade > 0
+		GROUP BY r.route_no, r.route_name, r.conzone_id, r.conzone_name, r.updown_type_code
+		ORDER BY r.route_no, r.conzone_id`
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {

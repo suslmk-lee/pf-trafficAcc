@@ -162,11 +162,44 @@ const RoadStatusPanel = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {Object.entries(groupedByRoute).map(([routeName, statuses]) => (
+          {Object.entries(groupedByRoute).map(([routeName, statuses]) => {
+            // Get the most recent collection time for this route
+            const latestCollectedAt = statuses.reduce((latest, status) => {
+              const statusTime = new Date(status.collectedAt);
+              return statusTime > latest ? statusTime : latest;
+            }, new Date(0));
+
+            const timeAgo = (date) => {
+              const minutes = Math.floor((new Date() - date) / 60000);
+              if (minutes < 1) return '방금 전';
+              if (minutes < 60) return `${minutes}분 전`;
+              const hours = Math.floor(minutes / 60);
+              if (hours < 24) return `${hours}시간 전`;
+              const days = Math.floor(hours / 24);
+              return `${days}일 전`;
+            };
+
+            return (
             <div key={routeName} className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
-                <h3 className="font-semibold text-blue-900">{routeName}</h3>
-                <p className="text-xs text-blue-600">{statuses.length}개 구간</p>
+              <div className="bg-blue-50 px-4 py-2 border-b border-blue-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-blue-900">{routeName}</h3>
+                  <p className="text-xs text-blue-600">{statuses.length}개 구간</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">최근 업데이트</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    {timeAgo(latestCollectedAt)}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {latestCollectedAt.toLocaleString('ko-KR', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -206,7 +239,8 @@ const RoadStatusPanel = () => {
                 </table>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
