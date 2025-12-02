@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-simulator
+  namespace: default
+  labels:
+    app: traffic-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-simulator
+  template:
+    metadata:
+      labels:
+        app: traffic-simulator
+    spec:
+      containers:
+      - name: traffic-simulator
+        image: traffic-simulator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traffic-simulator
+  namespace: default
+  labels:
+    app: traffic-simulator
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: traffic-simulator

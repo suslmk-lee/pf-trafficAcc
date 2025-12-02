@@ -1,0 +1,18 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: traffic-config-propagation
+  namespace: tf-monitor
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: traffic-config
+    - apiVersion: v1
+      kind: Secret
+      name: traffic-secret
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2

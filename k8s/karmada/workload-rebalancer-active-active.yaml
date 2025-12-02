@@ -1,0 +1,28 @@
+apiVersion: apps.karmada.io/v1alpha1
+kind: WorkloadRebalancer
+metadata:
+  name: all-services-rebalance
+spec:
+  workloads:
+    # Note: data-collector is excluded because it's a singleton service
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-processor
+      namespace: tf-monitor
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-api-service
+      namespace: tf-monitor
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: api-gateway
+      namespace: tf-monitor
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: frontend
+      namespace: tf-monitor
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: openapi-proxy-api
+      namespace: tf-monitor
+  ttlSecondsAfterFinished: 300  # Auto-delete after 5 minutes

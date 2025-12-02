@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-collector
+  namespace: tf-monitor
+  labels:
+    app: data-collector
+spec:
+  replicas: 1  # Singleton - Karmada will schedule to one cluster only
+  selector:
+    matchLabels:
+      app: data-collector
+  template:
+    metadata:
+      labels:
+        app: data-collector
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+      - name: data-collector
+        image: registry.k-paas.org/plugfest/data-collector:v1.0.0
+        imagePullPolicy: Always
+        env:
+        - name: DATA_SOURCE_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DATA_SOURCE_MODE
+        - name: REDIS_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: REDIS_ADDR
+        - name: SIMULATOR_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: SIMULATOR_API_URL
+        - name: REAL_OPENAPI_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: REAL_OPENAPI_URL
+        - name: REAL_OPENAPI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secret
+              key: REAL_OPENAPI_KEY
+        - name: TOLLGATE_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: TOLLGATE_API_URL
+        - name: TOLLGATE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secret
+              key: TOLLGATE_API_KEY
+        - name: ROAD_STATUS_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: ROAD_STATUS_API_URL
+        - name: ROAD_STATUS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secret
+              key: ROAD_STATUS_API_KEY
+        - name: COLLECT_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: COLLECT_INTERVAL
+        - name: TOLLGATE_COLLECT_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: TOLLGATE_COLLECT_INTERVAL
+        - name: ROAD_STATUS_COLLECT_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: ROAD_STATUS_COLLECT_INTERVAL
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secret
+              key: DB_PASSWORD
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_NAME
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-collector
+  namespace: tf-monitor
+  labels:
+    app: data-collector
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: data-collector

@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-init-schema
+  namespace: default
+data:
+  init.sql: |
+    -- Traffic Accidents Database Schema
+    -- 고속도로 공공데이터 포털 실시간 교통정보 저장
+
+    CREATE DATABASE IF NOT EXISTS trafficdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    USE trafficdb;
+
+    -- Traffic accidents table
+    CREATE TABLE IF NOT EXISTS traffic_accidents (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+      -- Lane information
+      lane_yn1 CHAR(1) COMMENT '1차로 여부',
+      lane_yn2 CHAR(1) COMMENT '2차로 여부',
+      lane_yn3 CHAR(1) COMMENT '3차로 여부',
+      lane_yn4 CHAR(1) COMMENT '4차로 여부',
+      lane_yn5 CHAR(1) COMMENT '5차로 여부',
+      lane_yn6 CHAR(1) COMMENT '6차로 여부',
+      late_length VARCHAR(50) COMMENT '지체길이',
+
+      -- Accident information
+      acc_hour VARCHAR(10) NOT NULL COMMENT '사고시간',
+      acc_date VARCHAR(20) NOT NULL COMMENT '사고날짜',
+      acc_type_code VARCHAR(10) COMMENT '사고유형코드',
+      acc_type VARCHAR(50) COMMENT '사고유형',
+      start_end_type_code VARCHAR(50) COMMENT '시종점유형코드',
+      sms_text TEXT NOT NULL COMMENT 'SMS문자내용',
+      acc_process_code VARCHAR(10) COMMENT '사고처리코드',
+      acc_point_nm VARCHAR(100) COMMENT '사고지점명',
+
+      -- Road information
+      nosun_nm VARCHAR(20) COMMENT '노선명',
+      road_nm VARCHAR(50) COMMENT '도로명',
+      acc_process_nm VARCHAR(20) COMMENT '사고처리명',
+
+      -- Location information
+      latitude DECIMAL(10, 6) COMMENT '위도',
+      altitude DECIMAL(10, 6) COMMENT '경도',
+
+      -- Additional information
+      series_nm INT COMMENT '순번',
+      shldr_road_yn CHAR(1) COMMENT '갓길도로여부',
+
+      -- Timestamps
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
+
+      -- Unique constraint to prevent duplicates
+      UNIQUE KEY uk_accident (acc_date, acc_hour, nosun_nm, road_nm, sms_text(255)),
+
+      -- Indexes for performance
+      INDEX idx_date_time (acc_date, acc_hour),
+      INDEX idx_created (created_at DESC),
+      INDEX idx_road (road_nm),
+      INDEX idx_acc_type (acc_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='고속도로 실시간 교통사고 정보';
+
+    -- Daily accident statistics aggregation table
+    CREATE TABLE IF NOT EXISTS daily_accident_stats (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+      -- Date for this statistics record
+      stat_date DATE NOT NULL COMMENT '통계 날짜',
+
+      -- Accident type
+      acc_type VARCHAR(50) NOT NULL COMMENT '사고유형',
+
+      -- Count for this type on this date
+      accident_count INT NOT NULL DEFAULT 0 COMMENT '사고 건수',
+
+      -- Timestamps
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
+
+      -- Unique constraint - one record per date per type
+      UNIQUE KEY uk_daily_stats (stat_date, acc_type),
+
+      -- Indexes
+      INDEX idx_stat_date (stat_date DESC),
+      INDEX idx_acc_type (acc_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='일별 사고 유형별 통계';
+
+    -- 요금소별 교통량 히스토리 테이블 (15분 단위)
+    CREATE TABLE IF NOT EXISTS tollgate_traffic_history (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+        -- 도로 구분
+        ex_div_code VARCHAR(10) NOT NULL COMMENT '도공/민자 구분코드 (도공:00, 이외:민자)',
+        ex_div_name VARCHAR(50) NOT NULL COMMENT '도공/민자 구분명',
+
+        -- 요금소(영업소) 정보
+        unit_code VARCHAR(10) NOT NULL COMMENT '영업소 코드',
+        unit_name VARCHAR(100) NOT NULL COMMENT '영업소명',
+
+        -- 진출입 구분
+        inout_type VARCHAR(10) NOT NULL COMMENT '입출구 구분코드 (0:입구, 1:출구)',
+        inout_name VARCHAR(20) NOT NULL COMMENT '입출구 구분명',
+
+        -- 시간 구분
+        tm_type VARCHAR(10) NOT NULL COMMENT '자료구분 (1:1시간, 2:15분)',
+        tm_name VARCHAR(20) NOT NULL COMMENT '자료구분명',
+
+        -- 결제수단 구분
+        tcs_type VARCHAR(10) NOT NULL COMMENT 'TCS/hi-pass 구분 (1:TCS, 2:hi-pass)',
+        tcs_name VARCHAR(30) NOT NULL COMMENT 'TCS/hi-pass 구분명',
+
+        -- 차종 구분
+        car_type VARCHAR(10) NOT NULL COMMENT '차종구분코드 (1:1종,2:2종,3:3종,4:4종,5:5종,6:6종,7:7종,8:8종)',
+
+        -- 교통량 (핵심 데이터)
+        traffic_amount INT NOT NULL COMMENT '교통량 (단위: 만대)',
+
+        -- 집계 시간 (API 원본 형식)
+        sum_date VARCHAR(8) NOT NULL COMMENT '집계 날짜 (YYYYMMDD)',
+        sum_tm VARCHAR(4) NOT NULL COMMENT '집계 시간 (HHMM)',
+
+        -- 집계 시간 (파싱된 형식 - 쿼리 최적화용)
+        collected_at DATETIME NOT NULL COMMENT '집계 시각 (파싱됨: sum_date + sum_tm)',
+
+        -- 수집 메타 정보
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '데이터 수집 시각',
+
+        -- 중복 방지: 같은 요금소, 시간, 차종, 진출입, 결제수단 조합은 유니크
+        UNIQUE KEY uk_traffic_data (
+            unit_code, sum_date, sum_tm,
+            car_type, inout_type, tcs_type, ex_div_code
+        ),
+
+        -- 조회 성능을 위한 인덱스
+        INDEX idx_unit_collected (unit_code, collected_at),
+        INDEX idx_collected_at (collected_at),
+        INDEX idx_sum_date (sum_date),
+        INDEX idx_unit_code (unit_code)
+
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='요금소별 교통량 히스토리 (15분 단위 수집)';
+
+    -- 노선별 소통 정보 요약 테이블
+    CREATE TABLE IF NOT EXISTS road_route_summary (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        route_no VARCHAR(10) NOT NULL COMMENT '노선 번호',
+        route_name VARCHAR(50) NOT NULL COMMENT '노선명',
+        total_sections INT NOT NULL COMMENT '총 구간 수',
+        smooth_sections INT NOT NULL DEFAULT 0 COMMENT '원활 구간 수 (grade=1)',
+        slow_sections INT NOT NULL DEFAULT 0 COMMENT '서행 구간 수 (grade=2)',
+        congested_sections INT NOT NULL DEFAULT 0 COMMENT '정체 구간 수 (grade=3)',
+        avg_speed DECIMAL(5,1) NOT NULL COMMENT '평균 속도 (km/h)',
+        avg_traffic_amount DECIMAL(8,1) NOT NULL COMMENT '평균 교통량 (대/시간)',
+        collected_at DATETIME NOT NULL COMMENT '수집 시각',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_route_summary (route_no, collected_at),
+        INDEX idx_route (route_no, route_name),
+        INDEX idx_collected_at (collected_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='노선별 소통 정보 5분 단위 집계';
+
+    -- 고속도로 실시간 소통정보 테이블
+    CREATE TABLE IF NOT EXISTS road_traffic_status (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        route_no VARCHAR(10) NOT NULL COMMENT '노선번호',
+        route_name VARCHAR(50) NOT NULL COMMENT '도로명',
+        conzone_id VARCHAR(20) NOT NULL COMMENT '콘존ID',
+        conzone_name VARCHAR(100) NOT NULL COMMENT '콘존명',
+        vds_id VARCHAR(20) NOT NULL COMMENT 'VDS_ID',
+        updown_type_code CHAR(1) NOT NULL COMMENT '방향(S:기점/E:종점)',
+        traffic_amount INT NOT NULL COMMENT '교통량(대)',
+        speed INT NOT NULL COMMENT '속도(km/h)',
+        share_ratio INT NOT NULL COMMENT '점유율',
+        time_avg INT NOT NULL COMMENT '통행시간',
+        grade TINYINT NOT NULL COMMENT '소통등급(0:판정불가,1:원활,2:서행,3:정체)',
+        std_date VARCHAR(8) NOT NULL COMMENT '수집일자(YYYYMMDD)',
+        std_hour VARCHAR(4) NOT NULL COMMENT '수집시각(HHMM)',
+        collected_at DATETIME NOT NULL COMMENT '수집 시각',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_traffic_status (vds_id, std_date, std_hour),
+        INDEX idx_route (route_no, route_name),
+        INDEX idx_collected_at (collected_at),
+        INDEX idx_grade (grade)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='고속도로 실시간 소통정보';
+
+    SELECT 'Database schema initialization completed!' as status;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mariadb-schema-init
+  namespace: default
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: mariadb-schema-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: schema-init
+        image: mariadb:10.11
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Waiting for MariaDB to be ready..."
+          until mysqladmin ping -h mariadb-central.default.svc.cluster.local -u root -p${MYSQL_ROOT_PASSWORD} --silent; do
+            echo "Waiting for database connection..."
+            sleep 5
+          done
+
+          echo "MariaDB is ready. Initializing schema..."
+          mysql -h mariadb-central.default.svc.cluster.local -u root -p${MYSQL_ROOT_PASSWORD} < /sql/init.sql
+
+          echo "Schema initialization completed successfully."
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: root-password
+        volumeMounts:
+        - name: sql-scripts
+          mountPath: /sql
+      volumes:
+      - name: sql-scripts
+        configMap:
+          name: mariadb-init-schema

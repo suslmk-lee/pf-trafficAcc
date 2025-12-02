@@ -1,0 +1,11 @@
+apiVersion: apps.karmada.io/v1alpha1
+kind: WorkloadRebalancer
+metadata:
+  name: data-collector-rebalance
+spec:
+  workloads:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-collector
+      namespace: tf-monitor
+  ttlSecondsAfterFinished: 300  # Auto-delete after 5 minutes

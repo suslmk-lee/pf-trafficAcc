@@ -1,0 +1,208 @@
+# Propagation policy for data-collector (Singleton with Weighted Failover)
+# Deployment has replicas: 1, distributed with 80:20 weight (member1 preferred)
+# This ensures only 1 pod runs across both clusters, prioritizing member1
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: data-collector-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-collector
+    - apiVersion: v1
+      kind: Service
+      name: data-collector
+    - apiVersion: v1
+      kind: Secret
+      name: openapi-secret
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 8
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 2
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      purgeMode: Gracefully
+      gracePeriodSeconds: 600
+---
+# Propagation policy for data-processor (Active-Active with Failover)
+# Normal: 1 replica in member1, 1 replica in member2 (total 2)
+# Failover: All 2 replicas in remaining healthy cluster
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: data-processor-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-processor
+    - apiVersion: v1
+      kind: Service
+      name: data-processor
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 1
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      gracePeriodSeconds: 600
+---
+# Propagation policy for data-api-service (Active-Active with Failover)
+# Normal: 1 replica in member1, 1 replica in member2 (total 2)
+# Failover: All 2 replicas in remaining healthy cluster
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: data-api-service-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: data-api-service
+    - apiVersion: v1
+      kind: Service
+      name: data-api-service
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 1
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      gracePeriodSeconds: 600
+---
+# Propagation policy for api-gateway (Active-Active with Failover)
+# Normal: 1 replica in member1, 1 replica in member2 (total 2)
+# Failover: All 2 replicas in remaining healthy cluster
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: api-gateway-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: api-gateway
+    - apiVersion: v1
+      kind: Service
+      name: api-gateway
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 1
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      gracePeriodSeconds: 600
+---
+# Propagation policy for frontend (Active-Active with Failover)
+# Normal: 1 replica in member1, 1 replica in member2 (total 2)
+# Failover: All 2 replicas in remaining healthy cluster
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: frontend-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: frontend
+    - apiVersion: v1
+      kind: Service
+      name: frontend
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 1
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      gracePeriodSeconds: 600

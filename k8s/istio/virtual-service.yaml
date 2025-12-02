@@ -1,0 +1,116 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: traffic-dashboard
+  namespace: tf-monitor
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - traffic-gateway
+  http:
+  # API routes - must come before frontend route
+  - match:
+    - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: api-gateway.tf-monitor.svc.cluster.local
+        port:
+          number: 8080
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 10s
+  # Frontend routes
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: frontend.tf-monitor.svc.cluster.local
+        port:
+          number: 80
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-gateway-vs
+  namespace: tf-monitor
+spec:
+  hosts:
+  - api-gateway.tf-monitor.svc.cluster.local
+  http:
+  - match:
+    - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: api-gateway.tf-monitor.svc.cluster.local
+        port:
+          number: 8080
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: data-api-service-vs
+  namespace: tf-monitor
+spec:
+  hosts:
+  - data-api-service.tf-monitor.svc.cluster.local
+  http:
+  - match:
+    - uri:
+        prefix: /api/accidents
+    route:
+    - destination:
+        host: data-api-service.tf-monitor.svc.cluster.local
+        port:
+          number: 8080
+        subset: v1
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 10s
+  - match:
+    - uri:
+        prefix: /api/tollgate
+    route:
+    - destination:
+        host: data-api-service.tf-monitor.svc.cluster.local
+        port:
+          number: 8080
+        subset: v1
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 10s
+  - match:
+    - uri:
+        prefix: /api/road
+    route:
+    - destination:
+        host: data-api-service.tf-monitor.svc.cluster.local
+        port:
+          number: 8080
+        subset: v1
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: gateway-error,connect-failure,refused-stream
+    timeout: 10s

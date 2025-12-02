@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+frontend/build/
+*/dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Kubernetes secrets
+*-secret.yaml
+secrets/
+
+# Temporary files
+*.tmp
+*.bak
+.cache/
+
+# Docker
+.dockerignore
+
+*.pid
+
+ARCHITECTURE.md
+DEMO_GUIDE.md
+DEPLOYMENT_GUIDE.md
+LOCAL_*.md
+PROJECT*.md
+QUICKSTART.md
+TEST*.md
+.superdesign
+*test*.html

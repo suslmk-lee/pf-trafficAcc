@@ -1,0 +1,210 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pvc
+  namespace: default
+spec:
+  storageClassName: cp-storageclass
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mariadb-secret
+  namespace: default
+type: Opaque
+stringData:
+  root-password: rootpass123
+  user: trafficuser
+  password: trafficpass
+  database: trafficdb
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-config
+  namespace: default
+data:
+  my.cnf: |
+    [mysqld]
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+    max_connections=200
+    innodb_buffer_pool_size=256M
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-initdb
+  namespace: default
+data:
+  init-schema.sql: |
+    -- Traffic Accidents Database Schema
+    -- 고속도로 공공데이터 포털 실시간 교통정보 저장
+
+    CREATE DATABASE IF NOT EXISTS trafficdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    USE trafficdb;
+
+    -- Traffic accidents table
+    CREATE TABLE IF NOT EXISTS traffic_accidents (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+      -- Lane information
+      lane_yn1 CHAR(1) COMMENT '1차로 여부',
+      lane_yn2 CHAR(1) COMMENT '2차로 여부',
+      lane_yn3 CHAR(1) COMMENT '3차로 여부',
+      lane_yn4 CHAR(1) COMMENT '4차로 여부',
+      lane_yn5 CHAR(1) COMMENT '5차로 여부',
+      lane_yn6 CHAR(1) COMMENT '6차로 여부',
+      late_length VARCHAR(50) COMMENT '지체길이',
+
+      -- Accident information
+      acc_hour VARCHAR(10) NOT NULL COMMENT '사고시간',
+      acc_date VARCHAR(20) NOT NULL COMMENT '사고날짜',
+      acc_type_code VARCHAR(10) COMMENT '사고유형코드',
+      acc_type VARCHAR(50) COMMENT '사고유형',
+      start_end_type_code VARCHAR(50) COMMENT '시종점유형코드',
+      sms_text TEXT NOT NULL COMMENT 'SMS문자내용',
+      acc_process_code VARCHAR(10) COMMENT '사고처리코드',
+      acc_point_nm VARCHAR(100) COMMENT '사고지점명',
+
+      -- Road information
+      nosun_nm VARCHAR(20) COMMENT '노선명',
+      road_nm VARCHAR(50) COMMENT '도로명',
+      acc_process_nm VARCHAR(20) COMMENT '사고처리명',
+
+      -- Location information
+      latitude DECIMAL(10, 6) COMMENT '위도',
+      altitude DECIMAL(10, 6) COMMENT '경도',
+
+      -- Additional information
+      series_nm INT COMMENT '순번',
+      shldr_road_yn CHAR(1) COMMENT '갓길도로여부',
+
+      -- Timestamps
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
+
+      -- Unique constraint to prevent duplicates
+      UNIQUE KEY uk_accident (acc_date, acc_hour, nosun_nm, road_nm, sms_text(255)),
+
+      -- Indexes for performance
+      INDEX idx_date_time (acc_date, acc_hour),
+      INDEX idx_created (created_at DESC),
+      INDEX idx_road (road_nm),
+      INDEX idx_acc_type (acc_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='고속도로 실시간 교통사고 정보';
+
+    -- Grant privileges to trafficuser
+    GRANT ALL PRIVILEGES ON trafficdb.* TO 'trafficuser'@'%';
+    FLUSH PRIVILEGES;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb-central
+  namespace: default
+  labels:
+    app: mariadb-central
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb-central
+  template:
+    metadata:
+      labels:
+        app: mariadb-central
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:10.11
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: password
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+        - name: config
+          mountPath: /etc/mysql/conf.d
+        - name: initdb
+          mountPath: /docker-entrypoint-initdb.d
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      volumes:
+      - name: mariadb-storage
+        persistentVolumeClaim:
+          claimName: mariadb-pvc
+      - name: config
+        configMap:
+          name: mariadb-config
+      - name: initdb
+        configMap:
+          name: mariadb-initdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-central
+  namespace: default
+  labels:
+    app: mariadb-central
+spec:
+  type: NodePort
+  ports:
+  - port: 3306
+    targetPort: 3306
+    nodePort: 30306
+    protocol: TCP
+    name: mysql
+  selector:
+    app: mariadb-central

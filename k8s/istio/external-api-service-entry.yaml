@@ -1,0 +1,33 @@
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-highway-api
+  namespace: tf-monitor
+spec:
+  hosts:
+  - data.ex.co.kr
+  ports:
+  - number: 443
+    name: https
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: external-highway-api-vs
+  namespace: tf-monitor
+spec:
+  hosts:
+  - data.ex.co.kr
+  tls:
+  - match:
+    - port: 443
+      sniHosts:
+      - data.ex.co.kr
+    route:
+    - destination:
+        host: data.ex.co.kr
+        port:
+          number: 443

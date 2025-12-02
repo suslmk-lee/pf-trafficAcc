@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-collector
+  namespace: traffic-dashboard
+  labels:
+    app: data-collector
+    tier: backend
+    component: singleton
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-collector
+  template:
+    metadata:
+      labels:
+        app: data-collector
+        tier: backend
+        component: singleton
+    spec:
+      containers:
+      - name: data-collector
+        image: registry.k-paas.org/mahahaa/data-collector:v1.0.0
+        imagePullPolicy: Always
+        env:
+        - name: DATA_SOURCE_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DATA_SOURCE_MODE
+        - name: REDIS_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: REDIS_ADDR
+        - name: SIMULATOR_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: SIMULATOR_API_URL
+        - name: REAL_OPENAPI_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: REAL_OPENAPI_URL
+        - name: REAL_OPENAPI_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: REAL_OPENAPI_KEY
+        - name: COLLECT_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: COLLECT_INTERVAL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"

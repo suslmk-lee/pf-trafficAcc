@@ -1,0 +1,147 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pvc
+  namespace: traffic-dashboard
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb-central
+  namespace: traffic-dashboard
+  labels:
+    app: mariadb
+    tier: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+        tier: database
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:10.11
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secrets
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-config
+              key: DB_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-secrets
+              key: DB_PASSWORD
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -h
+            - localhost
+            - -u
+            - root
+            - -prootpass
+            - -e
+            - SELECT 1
+          initialDelaySeconds: 20
+          periodSeconds: 5
+      volumes:
+      - name: mariadb-storage
+        persistentVolumeClaim:
+          claimName: mariadb-pvc
+      - name: init-script
+        configMap:
+          name: mariadb-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-central
+  namespace: traffic-dashboard
+  labels:
+    app: mariadb
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
+  selector:
+    app: mariadb
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-init
+  namespace: traffic-dashboard
+data:
+  init.sql: |
+    -- Traffic Dashboard Database Schema
+    CREATE DATABASE IF NOT EXISTS trafficdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    USE trafficdb;
+
+    CREATE TABLE IF NOT EXISTS accidents (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      acc_date VARCHAR(8) NOT NULL COMMENT 'YYYYMMDD format',
+      acc_hour VARCHAR(4) NOT NULL COMMENT 'HHMM format',
+      acc_point_nm VARCHAR(255) NOT NULL,
+      link_id VARCHAR(50),
+      acc_info TEXT,
+      acc_type VARCHAR(50),
+      latitude VARCHAR(20),
+      longitude VARCHAR(20),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_accident (acc_date, acc_hour, acc_point_nm),
+      INDEX idx_created_at (created_at),
+      INDEX idx_acc_date_hour (acc_date, acc_hour)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    -- Grant privileges
+    GRANT ALL PRIVILEGES ON trafficdb.* TO 'trafficuser'@'%';
+    FLUSH PRIVILEGES;

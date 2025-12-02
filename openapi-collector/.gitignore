@@ -1,0 +1,15 @@
+# Environment variables
+.env
+
+# Binary
+openapi-collector
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/

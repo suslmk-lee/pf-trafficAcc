@@ -1,0 +1,43 @@
+# Propagation policy for openapi-proxy-api (Active-Active with Failover)
+# Normal: 1 replica in member1, 1 replica in member2 (total 2)
+# Failover: All 2 replicas in remaining healthy cluster
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: openapi-proxy-api-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Secret
+      name: db-secret
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: openapi-proxy-api
+    - apiVersion: v1
+      kind: Service
+      name: openapi-proxy-api
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    replicaScheduling:
+      replicaDivisionPreference: Weighted
+      replicaSchedulingType: Divided
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 1
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      gracePeriodSeconds: 600

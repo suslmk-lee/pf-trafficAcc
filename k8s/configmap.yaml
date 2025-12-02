@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traffic-config
+  namespace: traffic-dashboard
+data:
+  # Database Configuration
+  DB_HOST: "mariadb-central.traffic-dashboard.svc.cluster.local:3306"
+  DB_NAME: "trafficdb"
+  DB_USER: "trafficuser"
+
+  # Redis Configuration
+  REDIS_ADDR: "redis-central.traffic-dashboard.svc.cluster.local:6379"
+
+  # Data Source Configuration
+  DATA_SOURCE_MODE: "real"
+  REAL_OPENAPI_URL: "https://data.ex.co.kr/openapi/burstInfo/realTimeSms"
+  REAL_OPENAPI_KEY: "8771969304"
+
+  # Simulator Configuration (fallback)
+  SIMULATOR_API_URL: "http://traffic-simulator.traffic-dashboard.svc.cluster.local:8080/api/traffic"
+
+  # Collection Interval
+  COLLECT_INTERVAL: "300s"
+
+  # API Service Configuration
+  DATA_API_SERVICE_URL: "http://data-api-service.traffic-dashboard.svc.cluster.local:8081"

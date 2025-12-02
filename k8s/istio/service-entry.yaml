@@ -1,0 +1,102 @@
+# ServiceEntry for accessing central MariaDB from member clusters
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: mariadb-central-se
+  namespace: default
+spec:
+  hosts:
+  - mariadb-central.default.svc.cluster.local
+  addresses:
+  - 240.0.0.1  # Virtual IP for central MariaDB
+  ports:
+  - number: 3306
+    name: mysql
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+  endpoints:
+  - address: MARIADB_CENTRAL_IP  # Replace with actual central cluster MariaDB IP
+    ports:
+      mysql: 3306
+---
+# ServiceEntry for accessing central Redis from member clusters
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: redis-central-se
+  namespace: default
+spec:
+  hosts:
+  - redis-central.default.svc.cluster.local
+  addresses:
+  - 240.0.0.2  # Virtual IP for central Redis
+  ports:
+  - number: 6379
+    name: redis
+    protocol: TCP
+  location: MESH_EXTERNAL
+  resolution: DNS
+  endpoints:
+  - address: REDIS_CENTRAL_IP  # Replace with actual central cluster Redis IP
+    ports:
+      redis: 6379
+---
+# ServiceEntry for accessing traffic-simulator from member clusters
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: traffic-simulator-se
+  namespace: default
+spec:
+  hosts:
+  - traffic-simulator.default.svc.cluster.local
+  addresses:
+  - 240.0.0.3  # Virtual IP for traffic simulator
+  ports:
+  - number: 8080
+    name: http
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: DNS
+  endpoints:
+  - address: TRAFFIC_SIMULATOR_IP  # Replace with actual central cluster traffic-simulator IP
+    ports:
+      http: 8080
+---
+# ServiceEntry for external OpenAPI (for real mode)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: openapi-its-gov-kr
+  namespace: default
+spec:
+  hosts:
+  - openapi.its.go.kr
+  ports:
+  - number: 9443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# VirtualService for external OpenAPI
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: openapi-its-gov-kr-vs
+  namespace: default
+spec:
+  hosts:
+  - openapi.its.go.kr
+  http:
+  - timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: gateway-error,connect-failure,refused-stream
+    route:
+    - destination:
+        host: openapi.its.go.kr
+        port:
+          number: 9443
