@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -11,11 +12,9 @@ const RoadStatusPanel = () => {
   // Fetch road status data
   const fetchRoadStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/road/status`);
-
-      if (!response.ok) {
-        throw new Error(`API 연결 실패: ${response.status}`);
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/road/status`, {
+        timeout: 15000,
+      }, 3);
 
       const data = await response.json();
       setRoadStatuses(data);

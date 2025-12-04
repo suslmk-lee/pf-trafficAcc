@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -185,14 +186,9 @@ const RoadRouteSummaryPanel = () => {
 
   const fetchRouteSummary = useCallback(async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/road/summary`);
-
-      if (!response.ok) {
-        console.warn('Route summary API returned error:', response.status);
-        setRoutes([]);
-        setError(null);
-        return;
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/road/summary`, {
+        timeout: 15000, // 15 second timeout
+      }, 3); // Retry 3 times
 
       const data = await response.json();
 

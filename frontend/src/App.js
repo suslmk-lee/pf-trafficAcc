@@ -5,6 +5,8 @@ import StatsPanel from './components/StatsPanel';
 import TollgateTrafficPanel from './components/TollgateTrafficPanel';
 import RoadRouteSummaryPanel from './components/RoadRouteSummaryPanel';
 import DashboardPanel from './components/DashboardPanel';
+import { fetchWithRetry } from './utils/fetchWithRetry';
+import { healthMonitor } from './utils/healthCheck';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'accidents', 'tollgate', or 'roadstatus'
@@ -21,10 +23,9 @@ function App() {
   // Initial load: fetch recent accidents (3 hours worth, typically 20-50 accidents)
   const fetchInitialAccidents = async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/accidents/latest?limit=100`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/accidents/latest?limit=100`, {
+        timeout: 15000,
+      }, 3);
       const data = await response.json();
 
       if (data && data.length > 0) {
@@ -46,10 +47,9 @@ function App() {
   // Polling: check for new accidents
   const fetchAccidents = async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/accidents/latest?limit=1`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/accidents/latest?limit=1`, {
+        timeout: 10000,
+      }, 2);
       const data = await response.json();
 
       if (data && data.length > 0) {
@@ -78,10 +78,9 @@ function App() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/accidents/stats`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/accidents/stats`, {
+        timeout: 10000,
+      }, 2);
       const data = await response.json();
       setStats(data);
     } catch (err) {
@@ -94,13 +93,19 @@ function App() {
     fetchInitialAccidents();
     fetchStats();
 
+    // Start health monitoring for GSLB failover
+    healthMonitor.start();
+
     // Poll every 10 seconds for new accidents
     const interval = setInterval(() => {
       fetchAccidents();
       fetchStats();
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      healthMonitor.stop();
+    };
   }, []);
 
   return (

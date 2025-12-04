@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import TollgateCard from './TollgateCard';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -14,13 +15,9 @@ const TollgateTrafficPanel = () => {
   // Fetch and organize data by time periods
   const fetchTollgateData = useCallback(async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/tollgate/traffic`);
-
-      if (!response.ok) {
-        console.warn('Tollgate API returned error:', response.status);
-        setTollgates([]);
-        return;
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/tollgate/traffic`, {
+        timeout: 15000,
+      }, 3);
 
       const data = await response.json();
 

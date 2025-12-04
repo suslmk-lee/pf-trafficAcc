@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: registry.k-paas.org/plugfest/frontend:v1.0.0
+        image: registry.k-paas.org/plugfest/frontend:v1.0.3
         imagePullPolicy: Always
         ports:
         - containerPort: 80

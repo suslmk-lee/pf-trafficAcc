@@ -1,6 +1,22 @@
-# Propagation policy for data-collector (Singleton with Weighted Failover)
-# Deployment has replicas: 1, distributed with 80:20 weight (member1 preferred)
-# This ensures only 1 pod runs across both clusters, prioritizing member1
+# Active-Standby Configuration with Automatic Failover and Manual Failback
+# - member1: Active (Primary) - weight 10000
+# - member2: Standby (weight 1) - with taint role=standby:NoSchedule
+#
+# Behavior:
+# - Normal: All workloads run in member1 only (spreadConstraints: maxGroups=1, weight 10000)
+# - member1 Failure: Automatic failover to member2 (within 30s)
+# - member1 Recovery: Manual failback using ./k8s/karmada/rebalance-services.sh
+#
+# Key Configuration:
+# - spreadConstraints ensures workloads stay in single cluster (no automatic rebalancing)
+# - Weight 10000:1 ensures member1 is always preferred over member2
+#
+# Prerequisites:
+# - member2 cluster must have taint: role=standby:NoSchedule
+# - Command: kubectl --context=karmada-api-ctx patch cluster member2 --type=json -p='[{"op":"add","path":"/spec/taints","value":[{"key":"role","value":"standby","effect":"NoSchedule"}]}]'
+
+---
+# Propagation policy for data-collector (Singleton Active-Standby)
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -23,19 +39,29 @@ spec:
       clusterNames:
         - member1
         - member2
+    # Tolerate standby taint only for failover scenarios
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
     replicaScheduling:
-      replicaDivisionPreference: Weighted
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       weightPreference:
         staticWeightList:
           - targetCluster:
               clusterNames:
                 - member1
-            weight: 8
+            weight: 10000
           - targetCluster:
               clusterNames:
                 - member2
-            weight: 2
+            weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
   failover:
     application:
       decisionConditions:
@@ -43,9 +69,7 @@ spec:
       purgeMode: Gracefully
       gracePeriodSeconds: 600
 ---
-# Propagation policy for data-processor (Active-Active with Failover)
-# Normal: 1 replica in member1, 1 replica in member2 (total 2)
-# Failover: All 2 replicas in remaining healthy cluster
+# Propagation policy for data-processor (Active-Standby)
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -65,28 +89,36 @@ spec:
       clusterNames:
         - member1
         - member2
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
     replicaScheduling:
-      replicaDivisionPreference: Weighted
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       weightPreference:
         staticWeightList:
           - targetCluster:
               clusterNames:
                 - member1
-            weight: 1
+            weight: 10000
           - targetCluster:
               clusterNames:
                 - member2
             weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
   failover:
     application:
       decisionConditions:
         tolerationSeconds: 30
+      purgeMode: Gracefully
       gracePeriodSeconds: 600
 ---
-# Propagation policy for data-api-service (Active-Active with Failover)
-# Normal: 1 replica in member1, 1 replica in member2 (total 2)
-# Failover: All 2 replicas in remaining healthy cluster
+# Propagation policy for data-api-service (Active-Standby)
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -106,28 +138,36 @@ spec:
       clusterNames:
         - member1
         - member2
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
     replicaScheduling:
-      replicaDivisionPreference: Weighted
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       weightPreference:
         staticWeightList:
           - targetCluster:
               clusterNames:
                 - member1
-            weight: 1
+            weight: 10000
           - targetCluster:
               clusterNames:
                 - member2
             weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
   failover:
     application:
       decisionConditions:
         tolerationSeconds: 30
+      purgeMode: Gracefully
       gracePeriodSeconds: 600
 ---
-# Propagation policy for api-gateway (Active-Active with Failover)
-# Normal: 1 replica in member1, 1 replica in member2 (total 2)
-# Failover: All 2 replicas in remaining healthy cluster
+# Propagation policy for api-gateway (Active-Standby)
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -147,28 +187,36 @@ spec:
       clusterNames:
         - member1
         - member2
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
     replicaScheduling:
-      replicaDivisionPreference: Weighted
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       weightPreference:
         staticWeightList:
           - targetCluster:
               clusterNames:
                 - member1
-            weight: 1
+            weight: 10000
           - targetCluster:
               clusterNames:
                 - member2
             weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
   failover:
     application:
       decisionConditions:
         tolerationSeconds: 30
+      purgeMode: Gracefully
       gracePeriodSeconds: 600
 ---
-# Propagation policy for frontend (Active-Active with Failover)
-# Normal: 1 replica in member1, 1 replica in member2 (total 2)
-# Failover: All 2 replicas in remaining healthy cluster
+# Propagation policy for frontend (Active-Standby)
 apiVersion: policy.karmada.io/v1alpha1
 kind: PropagationPolicy
 metadata:
@@ -188,21 +236,80 @@ spec:
       clusterNames:
         - member1
         - member2
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
     replicaScheduling:
-      replicaDivisionPreference: Weighted
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       weightPreference:
         staticWeightList:
           - targetCluster:
               clusterNames:
                 - member1
-            weight: 1
+            weight: 10000
           - targetCluster:
               clusterNames:
                 - member2
             weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
   failover:
     application:
       decisionConditions:
         tolerationSeconds: 30
+      purgeMode: Gracefully
+      gracePeriodSeconds: 600
+---
+# Propagation policy for openapi-proxy-api (Active-Standby)
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: openapi-proxy-api-propagation
+  namespace: tf-monitor
+spec:
+  propagateDeps: true
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: openapi-proxy-api
+    - apiVersion: v1
+      kind: Service
+      name: openapi-proxy-api
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member1
+        - member2
+    clusterTolerations:
+      - key: role
+        operator: Equal
+        value: standby
+        effect: NoSchedule
+    replicaScheduling:
+      replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
+      weightPreference:
+        staticWeightList:
+          - targetCluster:
+              clusterNames:
+                - member1
+            weight: 10000
+          - targetCluster:
+              clusterNames:
+                - member2
+            weight: 1
+    spreadConstraints:
+      - spreadByField: cluster
+        maxGroups: 1
+        minGroups: 1
+  failover:
+    application:
+      decisionConditions:
+        tolerationSeconds: 30
+      purgeMode: Gracefully
       gracePeriodSeconds: 600

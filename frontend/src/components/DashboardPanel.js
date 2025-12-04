@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import KoreaMap from './KoreaMap';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -38,11 +39,9 @@ const DashboardPanel = ({ onNavigate, accidents, stats }) => {
   // Fetch tollgate traffic data and get top 10
   const fetchTollgateTop10 = useCallback(async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/tollgate/traffic`);
-      if (!response.ok) {
-        console.warn('Tollgate API returned error:', response.status);
-        return;
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/tollgate/traffic`, {
+        timeout: 15000,
+      }, 3);
 
       const data = await response.json();
 
@@ -73,11 +72,9 @@ const DashboardPanel = ({ onNavigate, accidents, stats }) => {
   // Fetch route summary and get top 12
   const fetchRouteTop12 = useCallback(async () => {
     try {
-      const response = await fetch(`${API_GATEWAY_URL}/api/road/summary`);
-      if (!response.ok) {
-        console.warn('Route API returned error:', response.status);
-        return;
-      }
+      const response = await fetchWithRetry(`${API_GATEWAY_URL}/api/road/summary`, {
+        timeout: 15000,
+      }, 3);
 
       const data = await response.json();
 
