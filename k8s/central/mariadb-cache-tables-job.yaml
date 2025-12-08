@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mariadb-add-cache-tables
+  namespace: default
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: mariadb-cache-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: cache-tables-init
+        image: mariadb:10.11
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Waiting for MariaDB to be ready..."
+          until mysqladmin ping -h mariadb-central.default.svc.cluster.local -u root -p${MYSQL_ROOT_PASSWORD} --silent; do
+            echo "Waiting for database connection..."
+            sleep 3
+          done
+
+          echo "MariaDB is ready. Adding cache tables..."
+          mysql -h mariadb-central.default.svc.cluster.local -u root -p${MYSQL_ROOT_PASSWORD} trafficdb < /sql/add-cache-tables.sql
+
+          echo "Cache tables added successfully."
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: root-password
+        volumeMounts:
+        - name: sql-scripts
+          mountPath: /sql
+      volumes:
+      - name: sql-scripts
+        configMap:
+          name: mariadb-cache-tables

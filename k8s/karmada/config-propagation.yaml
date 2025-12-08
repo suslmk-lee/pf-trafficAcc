@@ -14,5 +14,5 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2

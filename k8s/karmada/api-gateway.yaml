@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: registry.k-paas.org/plugfest/api-gateway:v1.0.0
+        image: registry.k-paas.org/plugfest/api-gateway:v1.0.4
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

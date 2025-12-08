@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: data-processor
-        image: registry.k-paas.org/plugfest/data-processor:v1.0.0
+        image: registry.k-paas.org/plugfest/data-processor:v1.0.4
         imagePullPolicy: Always
         env:
         - name: DB_HOST

@@ -1,19 +1,19 @@
 # Active-Standby Configuration with Automatic Failover and Manual Failback
-# - member1: Active (Primary) - weight 10000
-# - member2: Standby (weight 1) - with taint role=standby:NoSchedule
+# - cp-plugfest-member1: Active (Primary) - weight 10000
+# - cp-plugfest-member2: Standby (weight 1) - with taint role=standby:NoSchedule
 #
 # Behavior:
-# - Normal: All workloads run in member1 only (spreadConstraints: maxGroups=1, weight 10000)
-# - member1 Failure: Automatic failover to member2 (within 30s)
-# - member1 Recovery: Manual failback using ./k8s/karmada/rebalance-services.sh
+# - Normal: All workloads run in cp-plugfest-member1 only (spreadConstraints: maxGroups=1, weight 10000)
+# - cp-plugfest-cp-plugfest-member1 Failure: Automatic failover to cp-plugfest-member2 (within 30s)
+# - cp-plugfest-cp-plugfest-member1 Recovery: Manual failback using ./k8s/karmada/rebalance-services.sh
 #
 # Key Configuration:
 # - spreadConstraints ensures workloads stay in single cluster (no automatic rebalancing)
-# - Weight 10000:1 ensures member1 is always preferred over member2
+# - Weight 10000:1 ensures cp-plugfest-member1 is always preferred over member2
 #
 # Prerequisites:
-# - member2 cluster must have taint: role=standby:NoSchedule
-# - Command: kubectl --context=karmada-api-ctx patch cluster member2 --type=json -p='[{"op":"add","path":"/spec/taints","value":[{"key":"role","value":"standby","effect":"NoSchedule"}]}]'
+# - cp-plugfest-cp-plugfest-member2 cluster must have taint: role=standby:NoSchedule
+# - Command: kubectl --context=karmada-api-ctx patch cluster cp-plugfest-member2 --type=json -p='[{"op":"add","path":"/spec/taints","value":[{"key":"role","value":"standby","effect":"NoSchedule"}]}]'
 
 ---
 # Propagation policy for data-collector (Singleton Active-Standby)
@@ -37,8 +37,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     # Tolerate standby taint only for failover scenarios
     clusterTolerations:
       - key: role
@@ -52,11 +52,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster
@@ -87,8 +87,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     clusterTolerations:
       - key: role
         operator: Equal
@@ -101,11 +101,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster
@@ -136,8 +136,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     clusterTolerations:
       - key: role
         operator: Equal
@@ -150,11 +150,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster
@@ -185,8 +185,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     clusterTolerations:
       - key: role
         operator: Equal
@@ -199,11 +199,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster
@@ -234,8 +234,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     clusterTolerations:
       - key: role
         operator: Equal
@@ -248,11 +248,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster
@@ -283,8 +283,8 @@ spec:
   placement:
     clusterAffinity:
       clusterNames:
-        - member1
-        - member2
+        - cp-plugfest-member1
+        - cp-plugfest-member2
     clusterTolerations:
       - key: role
         operator: Equal
@@ -297,11 +297,11 @@ spec:
         staticWeightList:
           - targetCluster:
               clusterNames:
-                - member1
+                - cp-plugfest-member1
             weight: 10000
           - targetCluster:
               clusterNames:
-                - member2
+                - cp-plugfest-member2
             weight: 1
     spreadConstraints:
       - spreadByField: cluster

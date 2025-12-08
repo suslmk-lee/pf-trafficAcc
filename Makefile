@@ -1,7 +1,7 @@
 # PlugFest 2025 Traffic Dashboard - Makefile
 # Registry and Version Configuration
 REGISTRY := registry.k-paas.org/plugfest
-VERSION := v1.0.3
+VERSION := v1.0.4
 
 # Service List
 SERVICES := traffic-simulator data-collector data-processor data-api-service api-gateway frontend openapi-collector openapi-proxy-api

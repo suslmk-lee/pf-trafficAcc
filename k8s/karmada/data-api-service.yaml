@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: data-api-service
-        image: registry.k-paas.org/plugfest/data-api-service:v1.0.0
+        image: registry.k-paas.org/plugfest/data-api-service:v1.0.4
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
