@@ -1,11 +1,16 @@
 /**
  * Fetch with automatic retry and exponential backoff
  * Useful for handling temporary network failures during failover/failback scenarios
+ *
+ * Timeline for cluster failover (10 retries):
+ * 3s, 6s, 12s, 24s, 30s, 30s, 30s, 30s, 30s, 30s
+ * Total: ~225 seconds (3.75 minutes)
  */
-export async function fetchWithRetry(url, options = {}, retries = 5) {
+export async function fetchWithRetry(url, options = {}, retries = 10) {
   const {
-    timeout = 15000, // 15 seconds timeout (increased for cluster transitions)
-    retryDelay = 2000, // Start with 2 second delay
+    timeout = 20000, // 20 seconds timeout (increased for cluster transitions)
+    retryDelay = 3000, // Start with 3 second delay
+    maxRetryDelay = 30000, // Cap maximum delay at 30 seconds
     ...fetchOptions
   } = options;
 
@@ -43,9 +48,9 @@ export async function fetchWithRetry(url, options = {}, retries = 5) {
         throw error;
       }
 
-      // Exponential backoff: 1s, 2s, 4s, 8s...
-      const delay = retryDelay * Math.pow(2, attempt);
-      console.warn(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+      // Exponential backoff with cap: 3s, 6s, 12s, 24s, 30s (max)...
+      const delay = Math.min(retryDelay * Math.pow(2, attempt), maxRetryDelay);
+      console.warn(`Attempt ${attempt + 1}/${retries + 1} failed, retrying in ${delay / 1000}s...`);
 
       await new Promise(resolve => setTimeout(resolve, delay));
     }
