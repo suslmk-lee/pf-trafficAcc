@@ -13,6 +13,7 @@ class HealthMonitor {
     this.consecutiveFailures = 0;
     this.intervalId = null;
     this.isChecking = false;
+    this.isTransitioning = false; // Track cluster transition state
   }
 
   async checkHealth() {
@@ -31,7 +32,15 @@ class HealthMonitor {
       if (response.ok) {
         // Health check passed
         this.consecutiveFailures = 0;
-        console.log('[HealthCheck] ✓ Cluster healthy');
+
+        // If we were transitioning, clear the flag and hide notification
+        if (this.isTransitioning) {
+          console.log('[HealthCheck] ✓ Cluster transition completed - service restored');
+          this.isTransitioning = false;
+          this.hideReloadNotification();
+        } else {
+          console.log('[HealthCheck] ✓ Cluster healthy');
+        }
       } else {
         this.handleFailure();
       }
@@ -46,20 +55,30 @@ class HealthMonitor {
     this.consecutiveFailures++;
     console.warn(`[HealthCheck] ✗ Health check failed (${this.consecutiveFailures}/${this.failureThreshold})`);
 
-    if (this.consecutiveFailures >= this.failureThreshold) {
-      console.warn('[HealthCheck] Cluster may be transitioning. Relying on API retry logic instead of reload.');
+    if (this.consecutiveFailures >= this.failureThreshold && !this.isTransitioning) {
+      console.warn('[HealthCheck] Cluster transitioning detected - showing notification');
 
-      // DO NOT reload - let the fetch retry logic handle failover
-      // This keeps the UI visible while services are transitioning
+      // Mark as transitioning to suppress error messages
+      this.isTransitioning = true;
 
-      // Reset counter after threshold to avoid log spam
-      this.consecutiveFailures = 0;
+      // Show notification
+      this.showReloadNotification();
+
+      // Keep the notification visible and let API retry logic handle the transition
+      // Don't reload - GSLB will route to healthy cluster automatically
     }
   }
 
   showReloadNotification() {
-    // Create temporary notification
+    // Remove existing notification if any
+    const existing = document.getElementById('cluster-transition-notification');
+    if (existing) {
+      existing.remove();
+    }
+
+    // Create notification
     const notification = document.createElement('div');
+    notification.id = 'cluster-transition-notification';
     notification.style.cssText = `
       position: fixed;
       top: 20px;
@@ -67,16 +86,64 @@ class HealthMonitor {
       transform: translateX(-50%);
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      padding: 16px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      padding: 16px 32px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       z-index: 10000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideDown 0.3s ease-out;
     `;
-    notification.textContent = '클러스터 전환 중... 페이지를 새로고침합니다.';
+
+    // Add spinner
+    const spinner = document.createElement('div');
+    spinner.style.cssText = `
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    `;
+
+    notification.appendChild(spinner);
+
+    const text = document.createElement('span');
+    text.textContent = '클러스터 전환 중... 잠시만 기다려주세요.';
+    notification.appendChild(text);
+
+    // Add animations
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideDown {
+        from {
+          transform: translateX(-50%) translateY(-100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(-50%) translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+
     document.body.appendChild(notification);
+  }
+
+  hideReloadNotification() {
+    const notification = document.getElementById('cluster-transition-notification');
+    if (notification) {
+      notification.style.animation = 'slideUp 0.3s ease-out';
+      setTimeout(() => notification.remove(), 300);
+    }
   }
 
   start() {

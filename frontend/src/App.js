@@ -20,6 +20,11 @@ function App() {
   // Use relative path since frontend and API are served from same IngressGateway
   const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
+  // Check if cluster is transitioning (suppress error messages during failover)
+  const isClusterTransitioning = () => {
+    return healthMonitor.isTransitioning;
+  };
+
   // Initial load: fetch recent accidents (3 hours worth, typically 20-50 accidents)
   const fetchInitialAccidents = async () => {
     try {
@@ -37,7 +42,10 @@ function App() {
       setIsInitialLoad(false);
     } catch (err) {
       console.error('Error fetching initial accidents:', err);
-      setError(err.message);
+      // Only set error if not transitioning
+      if (!isClusterTransitioning()) {
+        setError(err.message);
+      }
       setIsInitialLoad(false);
     } finally {
       setLoading(false);
@@ -72,7 +80,10 @@ function App() {
       setError(null);
     } catch (err) {
       console.error('Error fetching accidents:', err);
-      setError(err.message);
+      // Only set error if not transitioning
+      if (!isClusterTransitioning()) {
+        setError(err.message);
+      }
     }
   };
 
@@ -238,7 +249,7 @@ function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column - Map */}
               <div className="lg:col-span-2 space-y-6">
-                {error && (
+                {error && !isClusterTransitioning() && (
                   <div className="bg-red-900/20 border border-red-500 text-red-300 px-4 py-3 rounded">
                     <strong className="font-bold">오류: </strong>
                     <span>{error}</span>
