@@ -1,254 +1,188 @@
 #!/bin/bash
 
-# PlugFest 2025 Traffic Dashboard Deployment Script
-# High Availability Multi-Cluster Deployment Automation
+# Traffic Monitoring System - Deploy Script
+# This script deploys the entire system to Karmada and member clusters
 
 set -e
 
-# Color codes for output
+# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-REGISTRY="${DOCKER_REGISTRY:-registry.k-paas.org/plugfest}"
-CENTRAL_CLUSTER="${CENTRAL_CLUSTER:-central-cluster}"
-MEMBER1_CLUSTER="${MEMBER1_CLUSTER:-karmada-member1-ctx}"
-MEMBER2_CLUSTER="${MEMBER2_CLUSTER:-karmada-member2-ctx}"
-KARMADA_CONTEXT="${KARMADA_CONTEXT:-karmada-api-ctx}"
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Traffic Monitoring System - Deploy${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
 
-# Functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Cluster contexts
+KARMADA_CTX="karmada-api-ctx"
+MEMBER1_CTX="karmada-member1-ctx"
+MEMBER2_CTX="karmada-member2-ctx"
+CENTRAL_CTX="central-ctx"
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+# Check if contexts exist
+echo -e "${YELLOW}[1/13] Checking cluster contexts...${NC}"
+for ctx in $KARMADA_CTX $MEMBER1_CTX $MEMBER2_CTX $CENTRAL_CTX; do
+    if ! kubectl config get-contexts $ctx &> /dev/null; then
+        echo -e "${RED}Error: Context $ctx not found${NC}"
+        echo "Available contexts:"
+        kubectl config get-contexts
+        exit 1
+    fi
+    echo "  ✓ Context $ctx found"
+done
+echo ""
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+# Step 1: Deploy MariaDB and Redis to Central cluster
+echo -e "${YELLOW}[2/13] Deploying MariaDB and Redis to central cluster...${NC}"
+kubectl --context=$CENTRAL_CTX apply -f k8s/central/mariadb-central.yaml
+kubectl --context=$CENTRAL_CTX apply -f k8s/central/redis-central.yaml
+echo "  ✓ MariaDB and Redis deployed"
+echo ""
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+# Step 2: Wait for MariaDB and Redis to be ready
+echo -e "${YELLOW}[3/13] Waiting for MariaDB and Redis to be ready...${NC}"
+echo "  Waiting for MariaDB PVC to be bound..."
+kubectl --context=$CENTRAL_CTX wait --for=jsonpath='{.status.phase}'=Bound pvc/mariadb-pvc -n default --timeout=300s
+echo "  ✓ MariaDB PVC bound"
 
-# Check prerequisites
-check_prerequisites() {
-    log_info "Checking prerequisites..."
+echo "  Waiting for Redis PVC to be bound..."
+kubectl --context=$CENTRAL_CTX wait --for=jsonpath='{.status.phase}'=Bound pvc/redis-pvc -n default --timeout=300s
+echo "  ✓ Redis PVC bound"
 
-    command -v kubectl >/dev/null 2>&1 || { log_error "kubectl is required but not installed. Aborting."; exit 1; }
-    command -v docker >/dev/null 2>&1 || { log_error "docker is required but not installed. Aborting."; exit 1; }
-    command -v karmadactl >/dev/null 2>&1 || { log_warning "karmadactl not found. Multi-cluster deployment may fail."; }
+echo "  Waiting for MariaDB pod to be ready..."
+kubectl --context=$CENTRAL_CTX wait --for=condition=ready pod -l app=mariadb-central -n default --timeout=300s
+echo "  ✓ MariaDB ready"
 
-    log_success "Prerequisites check completed"
-}
+echo "  Waiting for Redis pod to be ready..."
+kubectl --context=$CENTRAL_CTX wait --for=condition=ready pod -l app=redis-central -n default --timeout=300s
+echo "  ✓ Redis ready"
+echo ""
 
-# Build Docker images
-build_images() {
-    log_info "Building Docker images..."
+# Step 3: Initialize MariaDB schema
+echo -e "${YELLOW}[4/13] Initializing MariaDB schema...${NC}"
+kubectl --context=$CENTRAL_CTX apply -f k8s/central/mariadb-schema-init.yaml
+echo "  Waiting for schema initialization job to complete..."
+kubectl --context=$CENTRAL_CTX wait --for=condition=complete job/mariadb-schema-init -n default --timeout=300s
+echo "  ✓ Database schema initialized"
+echo ""
 
-    services=("traffic-simulator" "data-collector" "data-processor" "data-api-service" "api-gateway" "frontend")
+# Step 4: Add cache tables
+echo -e "${YELLOW}[5/13] Adding cache tables to MariaDB...${NC}"
+kubectl --context=$CENTRAL_CTX create configmap mariadb-cache-tables --from-file=db/add-cache-tables.sql -n default --dry-run=client -o yaml | kubectl --context=$CENTRAL_CTX apply -f -
+kubectl --context=$CENTRAL_CTX apply -f k8s/central/mariadb-cache-tables-job.yaml
+echo "  Waiting for cache tables job to complete..."
+kubectl --context=$CENTRAL_CTX wait --for=condition=complete job/mariadb-add-cache-tables -n default --timeout=300s
+echo "  ✓ Cache tables added"
+echo ""
 
-    for service in "${services[@]}"; do
-        log_info "Building ${service}..."
-        docker build -t ${REGISTRY}/${service}:latest ${service}/
-        docker push ${REGISTRY}/${service}:latest
-        log_success "${service} built and pushed"
-    done
+# Step 5: Add tollgate tables
+echo -e "${YELLOW}[6/13] Adding tollgate tables to MariaDB...${NC}"
+kubectl --context=$CENTRAL_CTX create configmap tollgate-schema --from-file=db/schema_tollgate_traffic.sql -n default --dry-run=client -o yaml | kubectl --context=$CENTRAL_CTX apply -f -
+kubectl --context=$CENTRAL_CTX apply -f k8s/central/tollgate-schema-job.yaml
+echo "  Waiting for tollgate tables job to complete..."
+kubectl --context=$CENTRAL_CTX wait --for=condition=complete job/mariadb-add-tollgate-tables -n default --timeout=300s
+echo "  ✓ Tollgate tables added"
+echo ""
 
-    log_success "All images built successfully"
-}
+# Step 6: Create namespace in Karmada
+echo -e "${YELLOW}[7/13] Creating tf-monitor namespace in Karmada...${NC}"
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/namespace.yaml
+sleep 2
+echo "  ✓ Namespace created"
+echo ""
 
-# Deploy central cluster
-deploy_central() {
-    log_info "Deploying to central cluster..."
+# Step 7: Deploy ConfigMap and Secret
+echo -e "${YELLOW}[8/13] Deploying ConfigMap and Secret to Karmada...${NC}"
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/config-and-secrets.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/config-propagation.yaml
+echo "  ✓ ConfigMap and Secret deployed"
+echo ""
 
-    kubectl config use-context ${CENTRAL_CLUSTER}
+# Step 8: Apply member2 taint for Active-Standby
+echo -e "${YELLOW}[9/13] Applying taint to member2 cluster...${NC}"
+kubectl --context=$KARMADA_CTX patch cluster cp-plugfest-member2 --type=merge -p '{"spec":{"taints":[{"key":"role","value":"standby","effect":"NoSchedule"}]}}'
+echo "  ✓ Taint applied to member2"
+echo ""
 
-    log_info "Deploying MariaDB..."
-    kubectl apply -f k8s/central/mariadb-central.yaml
+# Step 9: Deploy all services to Karmada
+echo -e "${YELLOW}[10/13] Deploying services to Karmada...${NC}"
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/openapi-proxy-api.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/data-collector.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/data-processor.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/data-api-service.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/api-gateway.yaml
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/frontend.yaml
+echo "  ✓ Services deployed to Karmada"
+echo ""
 
-    log_info "Waiting for MariaDB to be ready..."
-    kubectl wait --for=condition=ready pod -l app=mariadb-central --timeout=300s
+# Step 10: Apply PropagationPolicy
+echo -e "${YELLOW}[11/13] Applying PropagationPolicy...${NC}"
+kubectl --context=$KARMADA_CTX apply -f k8s/karmada/propagation-policy.yaml
+echo "  ✓ PropagationPolicy applied"
+echo ""
 
-    log_info "Initializing database schema..."
-    kubectl apply -f k8s/central/mariadb-schema-init.yaml
-    kubectl wait --for=condition=complete job/mariadb-schema-init --timeout=120s
+# Step 11: Wait for pods to be ready in member1
+echo -e "${YELLOW}[12/13] Waiting for pods to be ready in member1...${NC}"
+echo "  This may take a few minutes..."
+sleep 15
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=frontend -n tf-monitor --timeout=300s
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=api-gateway -n tf-monitor --timeout=300s
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=data-api-service -n tf-monitor --timeout=300s
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=data-processor -n tf-monitor --timeout=300s
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=data-collector -n tf-monitor --timeout=300s
+kubectl --context=$MEMBER1_CTX wait --for=condition=ready pod -l app=openapi-proxy-api -n tf-monitor --timeout=300s
+echo "  ✓ All pods ready in member1"
+echo ""
 
-    log_info "Deploying Redis..."
-    kubectl apply -f k8s/central/redis-central.yaml
-    kubectl wait --for=condition=ready pod -l app=redis-central --timeout=120s
+# Step 12: Deploy Istio resources to member clusters
+echo -e "${YELLOW}[13/13] Deploying Istio resources to member clusters...${NC}"
+kubectl --context=$MEMBER1_CTX apply -f k8s/istio/gateway.yaml
+kubectl --context=$MEMBER1_CTX apply -f k8s/istio/virtual-service.yaml
+kubectl --context=$MEMBER1_CTX apply -f k8s/istio/destination-rule.yaml
 
-    log_info "Deploying traffic simulator..."
-    kubectl apply -f k8s/central/traffic-simulator.yaml
-    kubectl wait --for=condition=ready pod -l app=traffic-simulator --timeout=60s
+kubectl --context=$MEMBER2_CTX apply -f k8s/istio/gateway.yaml
+kubectl --context=$MEMBER2_CTX apply -f k8s/istio/virtual-service.yaml
+kubectl --context=$MEMBER2_CTX apply -f k8s/istio/destination-rule.yaml
+echo "  ✓ Istio resources deployed"
+echo ""
 
-    log_success "Central cluster deployment completed"
-}
+# Final verification
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Deploy completed successfully!${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
 
-# Configure Istio ServiceEntry
-configure_istio() {
-    log_info "Configuring Istio ServiceEntry..."
+echo -e "${BLUE}Deployment Status:${NC}"
+echo ""
+echo -e "${YELLOW}Central Cluster:${NC}"
+kubectl --context=$CENTRAL_CTX get pods -n default | grep -E "mariadb|redis"
+echo ""
 
-    kubectl config use-context ${CENTRAL_CLUSTER}
+echo -e "${YELLOW}Karmada ResourceBindings:${NC}"
+kubectl --context=$KARMADA_CTX get resourcebinding -n tf-monitor -o custom-columns=NAME:.metadata.name,CLUSTERS:.spec.clusters[*].name --no-headers
+echo ""
 
-    MARIADB_IP=$(kubectl get svc mariadb-central -o jsonpath='{.spec.clusterIP}')
-    REDIS_IP=$(kubectl get svc redis-central -o jsonpath='{.spec.clusterIP}')
-    SIMULATOR_IP=$(kubectl get svc traffic-simulator -o jsonpath='{.spec.clusterIP}')
+echo -e "${YELLOW}Member1 Pods:${NC}"
+kubectl --context=$MEMBER1_CTX get pods -n tf-monitor
+echo ""
 
-    log_info "Central service IPs:"
-    log_info "  MariaDB: ${MARIADB_IP}"
-    log_info "  Redis: ${REDIS_IP}"
-    log_info "  Simulator: ${SIMULATOR_IP}"
+echo -e "${YELLOW}Member2 Pods (should be empty - standby):${NC}"
+kubectl --context=$MEMBER2_CTX get pods -n tf-monitor 2>/dev/null || echo "  No pods (standby mode)"
+echo ""
 
-    # Create temporary file with replaced IPs
-    cp k8s/istio/service-entry.yaml k8s/istio/service-entry.yaml.tmp
-    sed -i.bak "s/MARIADB_CENTRAL_IP/${MARIADB_IP}/g" k8s/istio/service-entry.yaml.tmp
-    sed -i.bak "s/REDIS_CENTRAL_IP/${REDIS_IP}/g" k8s/istio/service-entry.yaml.tmp
-    sed -i.bak "s/TRAFFIC_SIMULATOR_IP/${SIMULATOR_IP}/g" k8s/istio/service-entry.yaml.tmp
+echo -e "${YELLOW}Istio Ingress Gateway:${NC}"
+echo -e "  Member1: $(kubectl --context=$MEMBER1_CTX get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+echo -e "  Member2: $(kubectl --context=$MEMBER2_CTX get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+echo ""
 
-    log_success "Istio ServiceEntry configured"
-}
+echo -e "${GREEN}Frontend Access:${NC}"
+MEMBER1_IP=$(kubectl --context=$MEMBER1_CTX get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo -e "  http://${MEMBER1_IP}/"
+echo ""
 
-# Deploy to Karmada
-deploy_karmada() {
-    log_info "Deploying to Karmada..."
-
-    kubectl config use-context ${KARMADA_CONTEXT}
-
-    # Create namespace with Istio injection enabled in member clusters
-    log_info "Creating tf-monitor namespace with Istio injection..."
-    for cluster in ${MEMBER1_CLUSTER} ${MEMBER2_CLUSTER}; do
-        kubectl --context ${cluster} apply -f k8s/karmada/namespace.yaml
-        log_success "Namespace created in ${cluster}"
-    done
-
-    # Create secrets and configmaps
-    log_info "Creating config and secrets..."
-    kubectl apply -f k8s/karmada/config-and-secrets.yaml
-    kubectl apply -f k8s/karmada/config-propagation.yaml
-
-    log_info "Waiting for config propagation..."
-    sleep 3
-
-    # Deploy services
-    log_info "Deploying services to Karmada..."
-    kubectl apply -f k8s/karmada/openapi-proxy-api.yaml
-    kubectl apply -f k8s/karmada/data-collector.yaml
-    kubectl apply -f k8s/karmada/data-processor.yaml
-    kubectl apply -f k8s/karmada/data-api-service.yaml
-    kubectl apply -f k8s/karmada/api-gateway.yaml
-    kubectl apply -f k8s/karmada/frontend.yaml
-
-    # Apply propagation policies
-    log_info "Applying propagation policies..."
-    kubectl apply -f k8s/karmada/propagation-policy.yaml
-    kubectl apply -f k8s/karmada/openapi-proxy-propagation.yaml
-
-    log_success "Karmada deployment completed"
-}
-
-# Deploy Istio configurations
-deploy_istio() {
-    log_info "Deploying Istio configurations..."
-
-    for cluster in ${MEMBER1_CLUSTER} ${MEMBER2_CLUSTER}; do
-        log_info "Configuring Istio in ${cluster}..."
-        kubectl config use-context ${cluster}
-
-        kubectl apply -f k8s/istio/gateway.yaml -n tf-monitor
-        kubectl apply -f k8s/istio/virtual-service.yaml -n tf-monitor
-        kubectl apply -f k8s/istio/destination-rule.yaml -n tf-monitor
-        kubectl apply -f k8s/istio/service-entry.yaml.tmp -n tf-monitor
-
-        log_success "Istio configured in ${cluster}"
-    done
-
-    # Cleanup temporary file
-    rm -f k8s/istio/service-entry.yaml.tmp k8s/istio/service-entry.yaml.tmp.bak
-
-    log_success "Istio deployment completed"
-}
-
-# Verify deployment
-verify_deployment() {
-    log_info "Verifying deployment..."
-
-    kubectl config use-context ${KARMADA_CONTEXT}
-
-    log_info "Karmada ResourceBindings:"
-    kubectl get resourcebinding
-
-    log_info "Checking member clusters..."
-    for cluster in ${MEMBER1_CLUSTER} ${MEMBER2_CLUSTER}; do
-        log_info "Pods in ${cluster}:"
-        kubectl --context ${cluster} get pods -n tf-monitor
-    done
-
-    log_success "Deployment verification completed"
-}
-
-# Main deployment flow
-main() {
-    echo "========================================="
-    echo "PlugFest 2025 Traffic Dashboard"
-    echo "High Availability Deployment"
-    echo "========================================="
-    echo ""
-
-    case "${1:-all}" in
-        prereq)
-            check_prerequisites
-            ;;
-        build)
-            check_prerequisites
-            build_images
-            ;;
-        central)
-            check_prerequisites
-            deploy_central
-            ;;
-        karmada)
-            check_prerequisites
-            configure_istio
-            deploy_karmada
-            ;;
-        istio)
-            check_prerequisites
-            configure_istio
-            deploy_istio
-            ;;
-        verify)
-            verify_deployment
-            ;;
-        all)
-            check_prerequisites
-            build_images
-            deploy_central
-            configure_istio
-            deploy_karmada
-            deploy_istio
-            verify_deployment
-            log_success "Full deployment completed successfully!"
-            ;;
-        *)
-            echo "Usage: $0 {all|prereq|build|central|karmada|istio|verify}"
-            echo ""
-            echo "Commands:"
-            echo "  all      - Full deployment (default)"
-            echo "  prereq   - Check prerequisites only"
-            echo "  build    - Build and push Docker images"
-            echo "  central  - Deploy central cluster only"
-            echo "  karmada  - Deploy to Karmada only"
-            echo "  istio    - Deploy Istio configurations only"
-            echo "  verify   - Verify deployment"
-            exit 1
-            ;;
-    esac
-}
-
-main "$@"
+echo -e "${YELLOW}System is ready for demo!${NC}"
+echo ""

@@ -30,7 +30,7 @@ spec:
         imagePullPolicy: Always
         env:
         - name: DB_HOST
-          value: "103.218.158.244"
+          value: "210.109.14.158"
         - name: DB_PORT
           value: "30306"
         - name: DB_USER

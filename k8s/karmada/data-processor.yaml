@@ -21,7 +21,7 @@ spec:
         imagePullPolicy: Always
         env:
         - name: DB_HOST
-          value: "103.218.158.244:30306"
+          value: "210.109.14.158:30306"
         - name: DB_USER
           value: "trafficuser"
         - name: DB_PASSWORD
@@ -29,7 +29,7 @@ spec:
         - name: DB_NAME
           value: "trafficdb"
         - name: REDIS_ADDR
-          value: "103.218.158.244:30379"
+          value: "210.109.14.158:30379"
         resources:
           requests:
             memory: "128Mi"
