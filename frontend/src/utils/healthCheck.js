@@ -22,8 +22,8 @@ class HealthMonitor {
     this.isChecking = true;
 
     try {
-      // Check if we can reach the frontend itself
-      const response = await fetch('/health', {
+      // Check if we can reach the actual API (not just nginx)
+      const response = await fetch('/api/accidents/stats', {
         method: 'GET',
         cache: 'no-cache',
         signal: AbortSignal.timeout(3000) // 3 second timeout
@@ -39,7 +39,7 @@ class HealthMonitor {
           this.isTransitioning = false;
           this.hideReloadNotification();
         } else {
-          console.log('[HealthCheck] ✓ Cluster healthy');
+          console.log('[HealthCheck] ✓ API healthy');
         }
       } else {
         this.handleFailure();
@@ -53,19 +53,29 @@ class HealthMonitor {
 
   handleFailure() {
     this.consecutiveFailures++;
-    console.warn(`[HealthCheck] ✗ Health check failed (${this.consecutiveFailures}/${this.failureThreshold})`);
+    console.warn(`[HealthCheck] ✗ API check failed (${this.consecutiveFailures}/${this.failureThreshold})`);
 
     if (this.consecutiveFailures >= this.failureThreshold && !this.isTransitioning) {
-      console.warn('[HealthCheck] Cluster transitioning detected - showing notification');
+      console.warn('[HealthCheck] Cluster transition detected - showing notification');
 
       // Mark as transitioning to suppress error messages
       this.isTransitioning = true;
 
-      // Show notification
+      // Show notification immediately
       this.showReloadNotification();
 
       // Keep the notification visible and let API retry logic handle the transition
       // Don't reload - GSLB will route to healthy cluster automatically
+    }
+  }
+
+  // Method to manually trigger transition state (called from API failures)
+  triggerTransition() {
+    if (!this.isTransitioning) {
+      console.warn('[HealthCheck] Cluster transition triggered by API failure');
+      this.isTransitioning = true;
+      this.consecutiveFailures = this.failureThreshold; // Set to threshold
+      this.showReloadNotification();
     }
   }
 
@@ -172,5 +182,5 @@ class HealthMonitor {
 // Export singleton instance
 export const healthMonitor = new HealthMonitor({
   checkInterval: 5000,      // Check every 5 seconds
-  failureThreshold: 2       // Reload after 2 consecutive failures (10 seconds)
+  failureThreshold: 1       // Trigger after 1 failure (immediate detection)
 });

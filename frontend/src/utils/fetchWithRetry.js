@@ -6,6 +6,8 @@
  * 3s, 6s, 12s, 24s, 30s, 30s, 30s, 30s, 30s, 30s
  * Total: ~225 seconds (3.75 minutes)
  */
+import { healthMonitor } from './healthCheck';
+
 export async function fetchWithRetry(url, options = {}, retries = 10) {
   const {
     timeout = 20000, // 20 seconds timeout (increased for cluster transitions)
@@ -13,6 +15,8 @@ export async function fetchWithRetry(url, options = {}, retries = 10) {
     maxRetryDelay = 30000, // Cap maximum delay at 30 seconds
     ...fetchOptions
   } = options;
+
+  let firstFailure = true;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -37,11 +41,24 @@ export async function fetchWithRetry(url, options = {}, retries = 10) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // For 5xx errors, retry
+      // For 5xx errors, trigger transition on first failure and retry
+      if (firstFailure && attempt > 0) {
+        console.warn('[FetchWithRetry] First 5xx error detected - triggering transition notification');
+        healthMonitor.triggerTransition();
+        firstFailure = false;
+      }
+
       console.warn(`Attempt ${attempt + 1} failed with status ${response.status}, retrying...`);
 
     } catch (error) {
       const isLastAttempt = attempt === retries;
+
+      // On first failure, trigger cluster transition notification
+      if (firstFailure && attempt > 0) {
+        console.warn('[FetchWithRetry] First API failure detected - triggering transition notification');
+        healthMonitor.triggerTransition();
+        firstFailure = false;
+      }
 
       if (isLastAttempt) {
         console.error(`All ${retries + 1} attempts failed:`, error);
