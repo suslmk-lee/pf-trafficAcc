@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import TollgateCard from './TollgateCard';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
+import { healthMonitor } from '../utils/healthCheck';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -23,7 +24,10 @@ const TollgateTrafficPanel = () => {
 
       // Handle empty or null data
       if (!data || !Array.isArray(data) || data.length === 0) {
-        setTollgates([]);
+        // Don't clear data during cluster transition
+        if (!healthMonitor.isTransitioning) {
+          setTollgates([]);
+        }
         return;
       }
 
@@ -129,7 +133,10 @@ const TollgateTrafficPanel = () => {
       };
     } catch (err) {
       console.error('Failed to fetch tollgate data:', err);
-      setError(err.message);
+      // Only show error if not transitioning
+      if (!healthMonitor.isTransitioning) {
+        setError(err.message);
+      }
       return null;
     }
   }, []);

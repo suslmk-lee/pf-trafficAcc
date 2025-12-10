@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
+import { healthMonitor } from '../utils/healthCheck';
 
 const API_GATEWAY_URL = process.env.REACT_APP_API_GATEWAY_URL || '';
 
@@ -194,17 +195,20 @@ const RoadRouteSummaryPanel = () => {
 
       // Handle empty or null data
       if (!data || !Array.isArray(data) || data.length === 0) {
-        setRoutes([]);
-        setError(null);
-        setLastFetchTime(new Date());
-        setTotalStats({
-          totalRoutes: 0,
-          totalSections: 0,
-          smoothSections: 0,
-          slowSections: 0,
-          congestedSections: 0,
-          avgSpeed: 0
-        });
+        // Don't clear data during cluster transition
+        if (!healthMonitor.isTransitioning) {
+          setRoutes([]);
+          setError(null);
+          setLastFetchTime(new Date());
+          setTotalStats({
+            totalRoutes: 0,
+            totalSections: 0,
+            smoothSections: 0,
+            slowSections: 0,
+            congestedSections: 0,
+            avgSpeed: 0
+          });
+        }
         return;
       }
 
@@ -228,8 +232,11 @@ const RoadRouteSummaryPanel = () => {
 
     } catch (err) {
       console.error('Failed to fetch route summary:', err);
-      setRoutes([]);
-      setError(null);
+      // Don't clear data during cluster transition
+      if (!healthMonitor.isTransitioning) {
+        setRoutes([]);
+        setError(null);
+      }
     }
   }, []);
 
